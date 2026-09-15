@@ -109,23 +109,62 @@ class SpotifyClient:
     def playlist_tracks(self, playlist_id, progress=None, note=None):
         chemin = "/playlists/%s/tracks" % playlist_id
         variantes = self.variantes_titres()
-        for index, (etiquette, params) in enumerate(variantes):
+        dernier_refus = None
+        for etiquette, params in variantes:
             try:
                 items = self._paginate(chemin, params, progress=progress)
             except SpotifyError as exc:
-                dernier = index == len(variantes) - 1
-                if dernier or exc.status not in (400, 403, 404, 502):
+                if exc.status not in (400, 403, 404, 502):
                     raise
+                dernier_refus = exc
                 if note:
                     note(
                         "Spotify a refusé la requête %s (%s) — nouvel essai "
                         "avec une requête plus simple." % (etiquette, exc.status)
                     )
                 continue
-            if index and note:
+            if etiquette != "complète" and note:
                 note("Requête %s acceptée." % etiquette)
             return items
-        return []
+
+        # Dernière carte : la fiche de la playlist embarque elle-même sa
+        # première page de titres. Quand /tracks est refusé mais que la fiche
+        # reste lisible, on passe par là.
+        items = self.titres_depuis_la_fiche(playlist_id, note=note)
+        if items is not None:
+            return items
+        raise dernier_refus
+
+    def titres_depuis_la_fiche(self, playlist_id, note=None):
+        """Titres lus dans l'objet playlist plutôt que via /tracks.
+
+        Renvoie None si cette voie échoue aussi. Elle ne donne que la première
+        page (100 titres) : au-delà, Spotify renvoie vers /tracks, refusé ici.
+        """
+        champs = "tracks(total,items(is_local,added_at,track(id,uri,name," \
+                 "duration_ms,external_ids(isrc),type,artists(id,name)," \
+                 "album(name,release_date))))"
+        try:
+            fiche = self.get("/playlists/%s" % playlist_id,
+                             {"fields": champs, "additional_types": "track"})
+        except SpotifyError:
+            return None
+        bloc = (fiche or {}).get("tracks") or {}
+        items = bloc.get("items")
+        if not items:
+            return None
+        total = bloc.get("total") or len(items)
+        if note:
+            note("Titres récupérés via la fiche de la playlist (%d sur %d)."
+                 % (len(items), total))
+        if total > len(items):
+            raise SpotifyError(
+                "Spotify refuse de lister les titres de cette playlist ; la "
+                "fiche n'en donne que %d sur %d, ce qui ne permet pas un "
+                "classement fidèle." % (len(items), total),
+                403, "/playlists/%s/tracks" % playlist_id,
+            )
+        return items
 
     def saved_tracks(self, progress=None):
         return self._paginate("/me/tracks", {"limit": 50}, progress=progress)

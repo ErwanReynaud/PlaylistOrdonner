@@ -177,7 +177,8 @@ class TestAutorisations(unittest.TestCase):
 class TestRepliParametres(unittest.TestCase):
     """Si Spotify refuse la requête détaillée, on retente en la simplifiant."""
 
-    def _client(self, refuse, statut=403):
+    def _client(self, refuse, statut=403, fiche=None):
+        """Client dont /tracks refuse selon `refuse`, et dont la fiche renvoie `fiche`."""
         from playlistordonner.spotify import SpotifyClient, SpotifyError
 
         client = SpotifyClient.__new__(SpotifyClient)
@@ -191,7 +192,13 @@ class TestRepliParametres(unittest.TestCase):
                 raise SpotifyError("Forbidden", statut, chemin)
             return [{"track": {"id": "t1"}}]
 
+        def faux_get(chemin, params=None):
+            if fiche is None:
+                raise SpotifyError("Forbidden", 403, chemin)
+            return fiche
+
         client._paginate = faux_paginate
+        client.get = faux_get
         return client
 
     def test_repli_jusqua_une_requete_acceptee(self):
@@ -225,3 +232,23 @@ class TestRepliParametres(unittest.TestCase):
             client.playlist_tracks("p1")
         self.assertEqual(piege.exception.status, 403)
         self.assertEqual(len(self.appels), len(client.variantes_titres()))
+
+    def test_repli_sur_la_fiche_de_la_playlist(self):
+        """Quand /tracks est refusé mais que la fiche porte les titres."""
+        fiche = {"tracks": {"total": 2, "items": [
+            {"track": {"id": "t1"}}, {"track": {"id": "t2"}}]}}
+        client = self._client(lambda p: True, fiche=fiche)
+        notes = []
+        items = client.playlist_tracks("p1", note=notes.append)
+        self.assertEqual(len(items), 2)
+        self.assertTrue(any("fiche" in note for note in notes))
+
+    def test_la_fiche_incomplete_est_refusee(self):
+        """Classer un sous-ensemble donnerait un résultat faux : on refuse."""
+        from playlistordonner.spotify import SpotifyError
+
+        fiche = {"tracks": {"total": 250, "items": [{"track": {"id": "t1"}}]}}
+        client = self._client(lambda p: True, fiche=fiche)
+        with self.assertRaises(SpotifyError) as piege:
+            client.playlist_tracks("p1")
+        self.assertIn("1 sur 250", str(piege.exception))

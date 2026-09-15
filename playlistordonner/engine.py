@@ -154,10 +154,18 @@ class Engine:
             )
         except SpotifyError as exc:
             if exc.status == 403:
+                mien = self.user().get("id")
+                appartenance = (
+                    "Elle t'appartient (%s)." % mien
+                    if proprietaire == mien
+                    else "Elle ne t'appartient pas : elle est à %s, alors que "
+                         "tu es connecté en tant que %s. Essaie une playlist "
+                         "que tu as créée toi-même pour confirmer que le reste "
+                         "fonctionne." % (proprietaire, mien)
+                )
                 raise SpotifyError(
-                    "%s\n\nLa fiche de la playlist « %s » est lisible "
-                    "(propriétaire : %s), mais pas la liste de ses titres."
-                    % (exc, name, proprietaire),
+                    "%s\n\nLa fiche de la playlist « %s » est lisible, mais "
+                    "pas la liste de ses titres. %s" % (exc, name, appartenance),
                     exc.status, exc.path,
                 )
             raise
