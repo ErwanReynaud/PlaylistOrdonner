@@ -228,6 +228,20 @@ class TestMoteur(unittest.TestCase):
         self.assertEqual(self.faux.replaced,
                          ["spotify:track:t2", "spotify:track:t3", "spotify:track:t1"])
 
+    def test_playlists_de_spotify_signalees(self):
+        self.faux.my_playlists = lambda progress=None: [
+            {"id": "p1", "name": "La mienne", "owner": {"id": "chef"},
+             "tracks": {"total": 3}},
+            {"id": "p2", "name": "Découvertes de la semaine",
+             "owner": {"id": "spotify"}, "tracks": {"total": 30}},
+        ]
+        listing = self.engine.list_playlists()
+        par_id = {p["id"]: p for p in listing}
+        self.assertTrue(par_id["p1"]["accessible"])
+        self.assertFalse(par_id["p2"]["accessible"])
+        self.assertIn("créée par Spotify", par_id["p2"]["name"])
+        self.assertTrue(par_id[engine_mod.LIKED]["accessible"])
+
     def test_titres_likes_non_reordonnables(self):
         report = Report()
         report.tracks = []

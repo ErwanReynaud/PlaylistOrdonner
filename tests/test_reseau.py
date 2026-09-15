@@ -114,3 +114,59 @@ class TestMagasin(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExplications(unittest.TestCase):
+    """Un 403 doit nommer l'appel fautif et sa cause probable."""
+
+    def setUp(self):
+        from playlistordonner import spotify
+
+        self.spotify = spotify
+
+    def _message(self, status, path, detail="Forbidden"):
+        class Resultat:
+            def __init__(self):
+                self.status = status
+                self.data = {"error": {"message": detail}}
+
+        return self.spotify._message(Resultat(), path)
+
+    def test_le_chemin_apparait_dans_le_message(self):
+        self.assertIn("/me/tracks", self._message(403, "/me/tracks"))
+
+    def test_scope_manquant_sur_les_titres_likes(self):
+        self.assertIn("user-library-read", self._message(403, "/me/tracks"))
+
+    def test_playlist_editoriale(self):
+        message = self._message(403, "/playlists/37i9dQ/tracks")
+        self.assertIn("créées par Spotify", message)
+
+    def test_api_audio_fermee(self):
+        self.assertIn("novembre 2024", self._message(403, "/audio-features"))
+
+    def test_404_reste_comprehensible(self):
+        self.assertIn("introuvable", self._message(404, "/playlists/abc", detail=""))
+
+
+class TestAutorisations(unittest.TestCase):
+    def test_autorisations_manquantes_detectees(self):
+        from playlistordonner.auth import SCOPES, Authenticator
+
+        auth = Authenticator.__new__(Authenticator)
+        auth._tokens = {"scope": " ".join(SCOPES[:2])}
+        self.assertEqual(auth.missing_scopes(), set(SCOPES[2:]))
+
+    def test_aucun_scope_connu_ne_declenche_pas_dalerte(self):
+        from playlistordonner.auth import Authenticator
+
+        auth = Authenticator.__new__(Authenticator)
+        auth._tokens = {}
+        self.assertEqual(auth.missing_scopes(), set())
+
+    def test_toutes_accordees(self):
+        from playlistordonner.auth import SCOPES, Authenticator
+
+        auth = Authenticator.__new__(Authenticator)
+        auth._tokens = {"scope": " ".join(SCOPES)}
+        self.assertEqual(auth.missing_scopes(), set())

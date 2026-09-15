@@ -217,6 +217,12 @@ def cmd_diagnostic(args):
     _log("Configuration : %s" % config.config_dir())
     _log("Client ID     : %s" % ("renseigné" if auth.has_client_id else "absent"))
     _log("Connexion     : %s" % ("active" if auth.is_logged_in else "aucune"))
+    if auth.is_logged_in:
+        accordees = auth.granted_scopes
+        _log("Autorisations : %s" % (", ".join(sorted(accordees)) or "inconnues"))
+        manquantes = auth.missing_scopes()
+        if manquantes:
+            _log("  MANQUANTES  : %s" % ", ".join(sorted(manquantes)))
     _log("Journal       : %s" % os.path.expanduser("~/Library/Logs/PlaylistOrdonner.log"))
     _log("")
     for hote in ("accounts.spotify.com", "api.spotify.com", "api.deezer.com"):

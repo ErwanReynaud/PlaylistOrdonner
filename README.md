@@ -236,6 +236,11 @@ Python.
 | Beaucoup de titres sans BPM | Deezer ne connaît pas ces titres, ou l'option Deezer est décochée. Ils sont regroupés en fin de leur genre. |
 | Beaucoup de « Genre inconnu » | Les artistes concernés n'ont pas de genre chez Spotify (fréquent pour les artistes peu connus). |
 | Playlist non modifiable | Tu ne peux réécrire que tes propres playlists ou les playlists collaboratives. Pour les autres, utilise « nouvelle playlist ». |
+| `403` sur une playlist | Les playlists **créées par Spotify** (Découvertes de la semaine, Daily Mix, Radar des sorties, Top titres…) sont fermées aux applications créées après fin 2024. Elles sont signalées « — créée par Spotify » dans la liste : choisis-en une que tu as créée toi-même. |
+| `403` sur les titres likés | L'autorisation `user-library-read` n'a pas été accordée. Clique sur « Se connecter à Spotify » pour réautoriser. |
+
+Les erreurs Spotify nomment désormais l'appel fautif (`Erreur Spotify 403 sur
+/me/tracks : …`), ce qui permet d'identifier la cause d'un coup d'œil.
 
 ## Développement
 

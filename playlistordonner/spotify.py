@@ -9,9 +9,10 @@ API = "https://api.spotify.com/v1"
 
 
 class SpotifyError(Exception):
-    def __init__(self, message, status=0):
+    def __init__(self, message, status=0, path=""):
         super().__init__(message)
         self.status = status
+        self.path = path
 
 
 class FeaturesUnavailable(SpotifyError):
@@ -43,7 +44,7 @@ class SpotifyClient:
             self.auth.refresh()
             return self._call(method, path, params, json_body, retry_auth=False)
         if not result.ok:
-            raise SpotifyError(_message(result), result.status)
+            raise SpotifyError(_message(result, path), result.status, path)
         return result.data
 
     def get(self, path, params=None):
@@ -165,7 +166,7 @@ def _chunks(seq, size):
         yield seq[i : i + size]
 
 
-def _message(result):
+def _message(result, path=""):
     error = (result.data or {}).get("error")
     if isinstance(error, dict):
         detail = error.get("message") or ""
@@ -173,16 +174,54 @@ def _message(result):
         detail = (result.data or {}).get("error_description") or error
     else:
         detail = ""
-    hints = {
-        401: "Session expirée ou autorisation manquante.",
-        403: "Spotify refuse cette action (droits insuffisants sur la playlist "
-             "ou API non accessible à ton application).",
-        404: "Introuvable.",
-        429: "Trop de requêtes, Spotify demande de patienter.",
-    }
-    hint = hints.get(result.status, "")
+
+    hint = _explication(result.status, path)
+    endroit = (" sur %s" % path) if path else ""
     parts = [p for p in (detail, hint) if p]
-    return "Erreur Spotify %s : %s" % (result.status, " ".join(parts) or "échec inconnu")
+    return "Erreur Spotify %s%s : %s" % (
+        result.status, endroit, " — ".join(parts) or "échec inconnu"
+    )
+
+
+def _explication(status, path):
+    """Cause la plus probable, formulée en fonction de l'appel qui a échoué."""
+    if status == 403:
+        if path.startswith("/me/tracks"):
+            return (
+                "l'autorisation « user-library-read » manque. Clique sur "
+                "« Se connecter à Spotify » pour réautoriser l'application."
+            )
+        if path.startswith("/audio-features") or path.startswith("/audio-analysis"):
+            return (
+                "Spotify a fermé cette API aux applications créées après "
+                "novembre 2024."
+            )
+        if "/tracks" in path and path.startswith("/playlists"):
+            return (
+                "cette playlist n'est pas accessible à ton application. Les "
+                "playlists créées par Spotify (Découvertes de la semaine, Daily "
+                "Mix, Radar des sorties…) sont réservées depuis fin 2024 : "
+                "choisis une playlist que tu as créée toi-même."
+            )
+        if path.startswith("/playlists"):
+            return (
+                "accès refusé à cette playlist. Si elle a été créée par "
+                "Spotify (Découvertes de la semaine, Daily Mix…), elle n'est "
+                "plus accessible aux applications récentes ; prends-en une que "
+                "tu as créée toi-même."
+            )
+        if path.startswith("/users/"):
+            return "droits insuffisants pour créer une playlist sur ce compte."
+        return (
+            "droits insuffisants, ou API non ouverte à ton application "
+            "Spotify."
+        )
+    return {
+        401: "session expirée ou autorisation manquante.",
+        404: "introuvable : l'élément n'existe pas ou n'est pas accessible à "
+             "ton application.",
+        429: "trop de requêtes, Spotify demande de patienter.",
+    }.get(status, "")
 
 
 __all__ = ["SpotifyClient", "SpotifyError", "FeaturesUnavailable", "AuthError"]

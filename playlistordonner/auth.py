@@ -125,6 +125,22 @@ class Authenticator:
     def is_logged_in(self):
         return bool(self._tokens.get("refresh_token") or self._tokens.get("access_token"))
 
+    @property
+    def granted_scopes(self):
+        """Autorisations réellement accordées par Spotify lors de la connexion."""
+        return set((self._tokens.get("scope") or "").split())
+
+    def missing_scopes(self):
+        """Autorisations demandées mais absentes du jeton.
+
+        Un jeton dépourvu de champ « scope » (cas ancien) ne déclenche aucune
+        alerte : on ne peut rien en conclure.
+        """
+        accordees = self.granted_scopes
+        if not accordees:
+            return set()
+        return set(SCOPES) - accordees
+
     def set_client_id(self, client_id):
         client_id = (client_id or "").strip()
         if client_id != self.client_id:

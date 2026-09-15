@@ -265,6 +265,13 @@ class App(tk.Tk):
         playlist = self._playlist(self.selected_id)
         if playlist:
             self.name_var.set(_suffixed(playlist["name"]))
+            if not playlist.get("accessible", True):
+                self.log(
+                    "Attention : « %s » a été créée par Spotify. Depuis fin "
+                    "2024, ces playlists sont fermées aux applications "
+                    "récentes et l'analyse échouera avec une erreur 403."
+                    % playlist["name"]
+                )
             if not playlist["editable"] and self.dest_var.get() == DEST_IN_PLACE:
                 self.dest_var.set(DEST_NEW)
                 self._sync_dest()

@@ -98,6 +98,14 @@ class Engine:
     def list_playlists(self):
         me = self.user()
         self.log("Connecté en tant que %s." % (me.get("display_name") or me.get("id")))
+        authentification = getattr(self.client, "auth", None)
+        manquantes = getattr(authentification, "missing_scopes", lambda: set())()
+        if manquantes:
+            self.log(
+                "Autorisations manquantes (%s) : reconnecte-toi avec « Se "
+                "connecter à Spotify » pour les accorder."
+                % ", ".join(sorted(manquantes))
+            )
         playlists = self.client.my_playlists()
         out = [
             {
@@ -106,19 +114,25 @@ class Engine:
                 "owner": me.get("id"),
                 "total": None,
                 "editable": False,
+                "accessible": True,
             }
         ]
         for playlist in playlists:
             if not playlist or not playlist.get("id"):
                 continue
             owner = (playlist.get("owner") or {}).get("id")
+            # Depuis fin 2024, Spotify ferme ses propres playlists (éditoriales
+            # et algorithmiques) aux applications récemment créées.
+            de_spotify = owner == "spotify"
+            nom = playlist.get("name") or "(sans nom)"
             out.append(
                 {
                     "id": playlist["id"],
-                    "name": playlist.get("name") or "(sans nom)",
+                    "name": nom + ("  — créée par Spotify" if de_spotify else ""),
                     "owner": owner,
                     "total": (playlist.get("tracks") or {}).get("total"),
                     "editable": owner == me.get("id") or bool(playlist.get("collaborative")),
+                    "accessible": not de_spotify,
                 }
             )
         return out
