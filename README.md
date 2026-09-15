@@ -176,6 +176,7 @@ python3 -m playlistordonner trier 37i9dQ... --apercu       # simulation
 python3 -m playlistordonner trier 37i9dQ... --nom "Soirée"
 python3 -m playlistordonner trier likes                     # titres likés
 python3 -m playlistordonner trier <url> --en-place
+python3 -m playlistordonner diagnostic                      # vérifie l'installation
 ```
 
 Options utiles : `--genres-precis`, `--sans-deezer`, `--sans-affinage`,
@@ -183,9 +184,41 @@ Options utiles : `--genres-precis`, `--sans-deezer`, `--sans-affinage`,
 
 ## Dépannage
 
+Premier réflexe, qui répond à la plupart des questions :
+
+```bash
+python3 -m playlistordonner diagnostic
+```
+
+Cette commande liste les Python installés, dit lesquels savent réellement
+ouvrir une fenêtre et avec quelle version de Tk, et teste l'accès réseau à
+Spotify et Deezer.
+
+### « Python a quitté de manière imprévue »
+
+C'est la version de **Tk** qui est en cause, pas l'application. Le Python
+fourni par Apple (`/usr/bin/python3`) s'appuie sur **Tk 8.5.9**, déprécié, qui
+fait tomber le processus au moment d'ouvrir une fenêtre sur les macOS récents.
+
+Le lanceur évite ce piège : il essaie réellement d'ouvrir une fenêtre dans un
+sous-processus jetable avant de démarrer l'application, écarte les
+interpréteurs qui plantent, et préfère toujours Tk 8.6. Il cherche dans cet
+ordre : les versions python.org, Homebrew, Anaconda/Miniconda, puis le `PATH`,
+et le Python d'Apple en dernier recours.
+
+S'il ne trouve aucun Tk 8.6, installe l'un des deux :
+
+```bash
+brew install python-tk          # avec Homebrew
+```
+
+ou le paquet officiel depuis <https://www.python.org/downloads/macos/>, qui
+embarque un Tk 8.6 à jour. Puis relance l'application — rien d'autre à faire,
+elle le détectera seule.
+
 | Symptôme | Cause et remède |
 |---|---|
-| L'app ne s'ouvre pas | Regarde `~/Library/Logs/PlaylistOrdonner.log`. Si Python ou Tkinter manque : `xcode-select --install` dans le Terminal. |
+| L'app ne s'ouvre pas | Regarde `~/Library/Logs/PlaylistOrdonner.log` : il indique quel interpréteur a été retenu, sa version de Tk, et ceux qui ont été écartés. |
 | « INVALID_CLIENT: Invalid redirect URI » | L'adresse `http://127.0.0.1:8888/callback` n'est pas enregistrée à l'identique dans ton app Spotify. |
 | « Le port 8888 est déjà utilisé » | Un autre programme l'occupe ; ferme-le, puis relance la connexion. |
 | Beaucoup de titres sans BPM | Deezer ne connaît pas ces titres, ou l'option Deezer est décochée. Ils sont regroupés en fin de leur genre. |

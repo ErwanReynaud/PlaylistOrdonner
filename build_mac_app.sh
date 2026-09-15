@@ -67,38 +67,15 @@ else
 fi
 
 # --- lanceur ----------------------------------------------------------------
+# Le choix de l'interpréteur est délicat (voir tools/lancer.sh) : on embarque
+# ce script tel quel et l'exécutable du bundle se contente de l'appeler.
+cp "$HERE/tools/lancer.sh" "$APP/Contents/Resources/lancer.sh"
+chmod +x "$APP/Contents/Resources/lancer.sh"
+
 cat > "$APP/Contents/MacOS/$APP_NAME" <<'LAUNCHER'
 #!/bin/bash
-# Lanceur du bundle : trouve un Python 3 muni de Tkinter, puis démarre l'app.
 BUNDLE="$(cd "$(dirname "$0")/.." && pwd)"
-RESOURCES="$BUNDLE/Resources"
-LOG_DIR="$HOME/Library/Logs"
-LOG="$LOG_DIR/PlaylistOrdonner.log"
-mkdir -p "$LOG_DIR"
-
-alert() {
-  /usr/bin/osascript -e "display alert \"PlaylistOrdonner\" message \"$1\" as critical" >/dev/null 2>&1
-}
-
-PYTHON=""
-for candidate in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 "$(command -v python3 2>/dev/null)"; do
-  [ -n "$candidate" ] && [ -x "$candidate" ] || continue
-  if "$candidate" -c 'import tkinter' >/dev/null 2>&1; then
-    PYTHON="$candidate"
-    break
-  fi
-done
-
-if [ -z "$PYTHON" ]; then
-  alert "Python 3 avec Tkinter est introuvable sur ce Mac. Ouvre le Terminal, lance « xcode-select --install », puis relance PlaylistOrdonner."
-  exit 1
-fi
-
-cd "$RESOURCES" || exit 1
-{
-  echo "--- $(date) : démarrage avec $PYTHON"
-} >> "$LOG"
-exec "$PYTHON" -m playlistordonner >> "$LOG" 2>&1
+exec "$BUNDLE/Resources/lancer.sh" "$BUNDLE/Resources"
 LAUNCHER
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
 

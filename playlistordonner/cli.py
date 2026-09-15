@@ -1,6 +1,10 @@
 """Interface en ligne de commande (utile sans interface graphique)."""
 
 import argparse
+import glob
+import os
+import platform
+import subprocess
 import sys
 
 from . import APP_NAME, __version__, config, sorter
@@ -112,6 +116,113 @@ def _strip_uri(value):
     return value
 
 
+SONDE_TK = """
+import tkinter
+racine = tkinter.Tk()
+racine.withdraw()
+racine.update_idletasks()
+print("TK=%s" % tkinter.TkVersion)
+racine.destroy()
+"""
+
+
+def _candidats_python():
+    """Mêmes candidats que tools/lancer.sh, dans le même ordre de préférence."""
+    chemins = sorted(glob.glob("/Library/Frameworks/Python.framework/Versions/*/bin/python3"))
+    chemins += [
+        "/opt/homebrew/bin/python3.14", "/opt/homebrew/bin/python3.13",
+        "/opt/homebrew/bin/python3.12", "/opt/homebrew/bin/python3.11",
+        "/opt/homebrew/bin/python3", "/usr/local/bin/python3",
+    ]
+    # Anaconda / Miniconda, que le Finder ne voit pas via le PATH du shell.
+    chemins += [
+        os.path.expanduser("~/anaconda3/bin/python3"),
+        os.path.expanduser("~/opt/anaconda3/bin/python3"),
+        os.path.expanduser("~/miniconda3/bin/python3"),
+        os.path.expanduser("~/opt/miniconda3/bin/python3"),
+        os.path.expanduser("~/miniforge3/bin/python3"),
+        os.path.expanduser("~/mambaforge/bin/python3"),
+        "/opt/anaconda3/bin/python3", "/opt/miniconda3/bin/python3",
+    ]
+    chemins += [sys.executable, "/usr/bin/python3"]
+    vus, sortie = set(), []
+    for chemin in chemins:
+        if chemin and chemin not in vus and os.path.exists(chemin):
+            vus.add(chemin)
+            sortie.append(chemin)
+    return sortie
+
+
+def _sonder(chemin):
+    """Renvoie la version de Tk si cet interpréteur sait ouvrir une fenêtre."""
+    try:
+        resultat = subprocess.run(
+            [chemin, "-c", SONDE_TK], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, "impossible à lancer"
+    for ligne in (resultat.stdout or "").splitlines():
+        if ligne.startswith("TK="):
+            return ligne[3:].strip(), ""
+    if resultat.returncode < 0:
+        return None, "le processus a été tué (signal %d)" % -resultat.returncode
+    premiere = (resultat.stderr or "").strip().splitlines()
+    return None, (premiere[-1] if premiere else "échec (code %d)" % resultat.returncode)
+
+
+def _reseau(hote):
+    import urllib.error
+    import urllib.request
+
+    try:
+        urllib.request.urlopen("https://%s/" % hote, timeout=10).close()
+        return "joignable"
+    except urllib.error.HTTPError as exc:
+        return "joignable (code %s)" % exc.code
+    except Exception as exc:
+        return "INJOIGNABLE (%s)" % exc
+
+
+def cmd_diagnostic(args):
+    auth = Authenticator()
+    _log("=== PlaylistOrdonner %s — diagnostic ===" % __version__)
+    _log("Système     : %s %s (%s)" % (platform.system(), platform.mac_ver()[0] or
+                                       platform.release(), platform.machine()))
+    _log("Python actif: %s (%s)" % (sys.executable, platform.python_version()))
+    _log("")
+    _log("Interpréteurs capables d'ouvrir une fenêtre (dans l'ordre de préférence) :")
+    retenu = None
+    for chemin in _candidats_python():
+        version, souci = _sonder(chemin)
+        if version:
+            marque = " "
+            try:
+                bon = float(version) >= 8.6
+            except ValueError:
+                bon = False
+            if bon and retenu is None:
+                retenu = (chemin, version)
+                marque = "*"
+            _log("  %s %-58s Tk %s%s" % (marque, chemin, version,
+                                         "" if bon else "  (8.5 : instable, à éviter)"))
+        else:
+            _log("    %-58s %s" % (chemin, souci))
+    _log("")
+    if retenu:
+        _log("→ L'application utilisera %s (Tk %s)." % retenu)
+    else:
+        _log("→ Aucun Python avec Tk 8.6 : installe python.org ou « brew install python-tk ».")
+    _log("")
+    _log("Configuration : %s" % config.config_dir())
+    _log("Client ID     : %s" % ("renseigné" if auth.has_client_id else "absent"))
+    _log("Connexion     : %s" % ("active" if auth.is_logged_in else "aucune"))
+    _log("Journal       : %s" % os.path.expanduser("~/Library/Logs/PlaylistOrdonner.log"))
+    _log("")
+    for hote in ("accounts.spotify.com", "api.spotify.com", "api.deezer.com"):
+        _log("Réseau %-22s %s" % (hote, _reseau(hote)))
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="playlistordonner",
@@ -148,6 +259,10 @@ def build_parser():
     trier.add_argument("--sans-affinage", action="store_true",
                        help="garde le score d'énergie théorique de chaque genre")
     trier.set_defaults(func=cmd_trier)
+
+    diag = sub.add_parser("diagnostic",
+                          help="vérifie l'installation (Python, Tk, réseau, connexion)")
+    diag.set_defaults(func=cmd_diagnostic)
     return parser
 
 

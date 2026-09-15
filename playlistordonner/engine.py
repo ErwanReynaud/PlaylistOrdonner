@@ -102,7 +102,7 @@ class Engine:
         out = [
             {
                 "id": LIKED,
-                "name": "❤️  Titres likés",
+                "name": "♥ Titres likés",
                 "owner": me.get("id"),
                 "total": None,
                 "editable": False,
