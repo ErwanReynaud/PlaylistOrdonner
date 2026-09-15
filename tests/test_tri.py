@@ -159,9 +159,10 @@ class FauxClient:
                  "tracks": {"total": len(self.items)}}]
 
     def playlist(self, playlist_id):
-        return {"id": playlist_id, "name": "Ma playlist", "tracks": {"total": len(self.items)}}
+        return {"id": playlist_id, "name": "Ma playlist", "owner": {"id": "chef"},
+                "tracks": {"total": len(self.items)}}
 
-    def playlist_tracks(self, playlist_id, progress=None):
+    def playlist_tracks(self, playlist_id, progress=None, note=None):
         return self.items
 
     def artists(self, artist_ids):

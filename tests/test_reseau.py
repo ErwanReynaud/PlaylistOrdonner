@@ -138,9 +138,11 @@ class TestExplications(unittest.TestCase):
     def test_scope_manquant_sur_les_titres_likes(self):
         self.assertIn("user-library-read", self._message(403, "/me/tracks"))
 
-    def test_playlist_editoriale(self):
+    def test_refus_sur_les_titres_dune_playlist(self):
+        """Le message ne doit pas affirmer une cause qu'il ne connaît pas."""
         message = self._message(403, "/playlists/37i9dQ/tracks")
-        self.assertIn("créées par Spotify", message)
+        self.assertIn("tester", message)
+        self.assertNotIn("créée par Spotify", message)
 
     def test_api_audio_fermee(self):
         self.assertIn("novembre 2024", self._message(403, "/audio-features"))
@@ -170,3 +172,56 @@ class TestAutorisations(unittest.TestCase):
         auth = Authenticator.__new__(Authenticator)
         auth._tokens = {"scope": " ".join(SCOPES)}
         self.assertEqual(auth.missing_scopes(), set())
+
+
+class TestRepliParametres(unittest.TestCase):
+    """Si Spotify refuse la requête détaillée, on retente en la simplifiant."""
+
+    def _client(self, refuse, statut=403):
+        from playlistordonner.spotify import SpotifyClient, SpotifyError
+
+        client = SpotifyClient.__new__(SpotifyClient)
+        client._features_blocked = False
+        self.appels = []
+
+        def faux_paginate(chemin, params=None, limit_total=None, progress=None):
+            params = params or {}
+            self.appels.append(params)
+            if refuse(params):
+                raise SpotifyError("Forbidden", statut, chemin)
+            return [{"track": {"id": "t1"}}]
+
+        client._paginate = faux_paginate
+        return client
+
+    def test_repli_jusqua_une_requete_acceptee(self):
+        client = self._client(lambda p: "fields" in p or "additional_types" in p)
+        notes = []
+        items = client.playlist_tracks("p1", note=notes.append)
+        self.assertEqual(len(items), 1)
+        self.assertNotIn("fields", self.appels[-1])
+        self.assertNotIn("additional_types", self.appels[-1])
+        self.assertTrue(any("acceptée" in note for note in notes))
+
+    def test_la_premiere_requete_reste_la_plus_precise(self):
+        client = self._client(lambda p: False)
+        client.playlist_tracks("p1")
+        self.assertIn("fields", self.appels[0])
+        self.assertEqual(len(self.appels), 1, "aucun essai inutile")
+
+    def test_une_erreur_dautorisation_ne_declenche_pas_le_repli(self):
+        from playlistordonner.spotify import SpotifyError
+
+        client = self._client(lambda p: True, statut=401)
+        with self.assertRaises(SpotifyError):
+            client.playlist_tracks("p1")
+        self.assertEqual(len(self.appels), 1)
+
+    def test_si_tout_echoue_lerreur_remonte(self):
+        from playlistordonner.spotify import SpotifyError
+
+        client = self._client(lambda p: True)
+        with self.assertRaises(SpotifyError) as piege:
+            client.playlist_tracks("p1")
+        self.assertEqual(piege.exception.status, 403)
+        self.assertEqual(len(self.appels), len(client.variantes_titres()))

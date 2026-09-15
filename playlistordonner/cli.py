@@ -230,6 +230,79 @@ def cmd_diagnostic(args):
     return 0
 
 
+def cmd_tester(args):
+    """Interroge Spotify appel par appel pour voir exactement ce qui est refusé."""
+    import urllib.parse
+
+    from .spotify import API, SpotifyClient
+    from .webclient import request
+
+    auth = _auth(args)
+    client = SpotifyClient(auth)
+    playlist_id = _strip_uri(args.playlist)
+    jeton = auth.access_token()
+    champs = SpotifyClient.CHAMPS_TITRES
+
+    def essai(libelle, chemin, params=None):
+        url = API + chemin
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        resultat = request(url, headers={"Authorization": "Bearer " + jeton}, retries=0)
+        etat = "OK " if resultat.ok else "NON"
+        detail = ""
+        if not resultat.ok:
+            erreur = (resultat.data or {}).get("error")
+            if isinstance(erreur, dict):
+                detail = " — %s" % (erreur.get("message") or "")
+            elif erreur:
+                detail = " — %s" % erreur
+        _log("  [%s %3d] %-42s%s" % (etat, resultat.status, libelle, detail))
+        return resultat
+
+    _log("=== Sonde sur la playlist %s ===" % playlist_id)
+    _log("")
+    essai("compte connecté", "/me")
+
+    fiche = essai("fiche de la playlist", "/playlists/%s" % playlist_id)
+    if fiche.ok:
+        proprietaire = (fiche.data.get("owner") or {}).get("id")
+        _log("      nom : %s" % fiche.data.get("name"))
+        _log("      propriétaire : %s   collaborative : %s   publique : %s"
+             % (proprietaire, fiche.data.get("collaborative"), fiche.data.get("public")))
+
+    chemin = "/playlists/%s/tracks" % playlist_id
+    essai("titres, requête minimale", chemin, {"limit": 1})
+    essai("titres, limit=50", chemin, {"limit": 50})
+    essai("titres + additional_types", chemin, {"limit": 1, "additional_types": "track"})
+    essai("titres + fields", chemin, {"limit": 1, "fields": champs})
+    complete = essai("titres, requête complète", chemin,
+                     {"limit": 100, "fields": champs, "additional_types": "track"})
+
+    _log("")
+    identifiants = []
+    for element in (complete.data or {}).get("items") or []:
+        piste = (element or {}).get("track") or {}
+        if piste.get("id"):
+            identifiants.append(piste["id"])
+        for artiste in piste.get("artists") or []:
+            if artiste.get("id"):
+                identifiants.append("artiste:" + artiste["id"])
+    artistes = [i.split(":")[1] for i in identifiants if i.startswith("artiste:")][:2]
+    pistes = [i for i in identifiants if not i.startswith("artiste:")][:2]
+
+    if artistes:
+        essai("genres des artistes", "/artists", {"ids": ",".join(artistes)})
+    if pistes:
+        essai("caractéristiques audio (BPM)", "/audio-features", {"ids": ",".join(pistes)})
+    essai("titres likés", "/me/tracks", {"limit": 1})
+    _log("")
+    _log("Autorisations du jeton : %s" % (", ".join(sorted(auth.granted_scopes)) or "inconnues"))
+    manquantes = auth.missing_scopes()
+    if manquantes:
+        _log("MANQUANTES : %s" % ", ".join(sorted(manquantes)))
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="playlistordonner",
@@ -266,6 +339,12 @@ def build_parser():
     trier.add_argument("--sans-affinage", action="store_true",
                        help="garde le score d'énergie théorique de chaque genre")
     trier.set_defaults(func=cmd_trier)
+
+    test = sub.add_parser("tester",
+                          help="interroge Spotify appel par appel sur une playlist")
+    test.add_argument("playlist", help="identifiant ou URL de la playlist")
+    test.add_argument("--client-id")
+    test.set_defaults(func=cmd_tester)
 
     diag = sub.add_parser("diagnostic",
                           help="vérifie l'installation (Python, Tk, réseau, connexion)")

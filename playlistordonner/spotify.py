@@ -84,16 +84,48 @@ class SpotifyClient:
             {"fields": "id,name,owner(id,display_name),snapshot_id,tracks(total),public,collaborative"},
         )
 
-    def playlist_tracks(self, playlist_id, progress=None):
-        fields = (
-            "next,total,items(is_local,added_at,track(id,uri,name,duration_ms,"
-            "is_playable,external_ids(isrc),type,artists(id,name),album(name,release_date)))"
-        )
-        return self._paginate(
-            "/playlists/%s/tracks" % playlist_id,
-            {"limit": 100, "fields": fields, "additional_types": "track"},
-            progress=progress,
-        )
+    CHAMPS_TITRES = (
+        "next,total,items(is_local,added_at,track(id,uri,name,duration_ms,"
+        "is_playable,external_ids(isrc),type,artists(id,name),album(name,release_date)))"
+    )
+
+    def variantes_titres(self):
+        """Jeux de paramètres, du plus précis au plus dépouillé.
+
+        Certains comptes ou certaines playlists refusent la requête complète.
+        Plutôt que d'abandonner, on retente en retirant les raffinements : le
+        strict minimum (`limit`) suffit à faire le travail, au prix de réponses
+        plus volumineuses.
+        """
+        return [
+            ("complète", {"limit": 100, "fields": self.CHAMPS_TITRES,
+                          "additional_types": "track"}),
+            ("sans filtrage des champs", {"limit": 100, "additional_types": "track"}),
+            ("sans additional_types", {"limit": 100, "fields": self.CHAMPS_TITRES}),
+            ("minimale", {"limit": 100}),
+            ("minimale, par pages de 50", {"limit": 50}),
+        ]
+
+    def playlist_tracks(self, playlist_id, progress=None, note=None):
+        chemin = "/playlists/%s/tracks" % playlist_id
+        variantes = self.variantes_titres()
+        for index, (etiquette, params) in enumerate(variantes):
+            try:
+                items = self._paginate(chemin, params, progress=progress)
+            except SpotifyError as exc:
+                dernier = index == len(variantes) - 1
+                if dernier or exc.status not in (400, 403, 404, 502):
+                    raise
+                if note:
+                    note(
+                        "Spotify a refusé la requête %s (%s) — nouvel essai "
+                        "avec une requête plus simple." % (etiquette, exc.status)
+                    )
+                continue
+            if index and note:
+                note("Requête %s acceptée." % etiquette)
+            return items
+        return []
 
     def saved_tracks(self, progress=None):
         return self._paginate("/me/tracks", {"limit": 50}, progress=progress)
@@ -198,10 +230,10 @@ def _explication(status, path):
             )
         if "/tracks" in path and path.startswith("/playlists"):
             return (
-                "cette playlist n'est pas accessible à ton application. Les "
-                "playlists créées par Spotify (Découvertes de la semaine, Daily "
-                "Mix, Radar des sorties…) sont réservées depuis fin 2024 : "
-                "choisis une playlist que tu as créée toi-même."
+                "Spotify refuse de lister les titres de cette playlist, même "
+                "en requête simplifiée. Lance « python3 -m playlistordonner "
+                "tester <playlist> » pour identifier précisément ce qui est "
+                "refusé."
             )
         if path.startswith("/playlists"):
             return (

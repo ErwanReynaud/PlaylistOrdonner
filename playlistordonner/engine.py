@@ -146,8 +146,22 @@ class Engine:
             return "Titres likés", self.client.saved_tracks(progress=on_page)
         meta = self.client.playlist(playlist_id)
         name = meta.get("name") or "Playlist"
-        self.log("Lecture de « %s »…" % name)
-        return name, self.client.playlist_tracks(playlist_id, progress=on_page)
+        proprietaire = (meta.get("owner") or {}).get("id") or "?"
+        self.log("Lecture de « %s » (propriétaire : %s)…" % (name, proprietaire))
+        try:
+            items = self.client.playlist_tracks(
+                playlist_id, progress=on_page, note=self.log
+            )
+        except SpotifyError as exc:
+            if exc.status == 403:
+                raise SpotifyError(
+                    "%s\n\nLa fiche de la playlist « %s » est lisible "
+                    "(propriétaire : %s), mais pas la liste de ses titres."
+                    % (exc, name, proprietaire),
+                    exc.status, exc.path,
+                )
+            raise
+        return name, items
 
     # -- traitement -----------------------------------------------------------------
     def analyse(self, playlist_id, group_mode=sorter.GROUP_BY_FAMILY,

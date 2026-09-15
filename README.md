@@ -177,6 +177,7 @@ python3 -m playlistordonner trier 37i9dQ... --nom "Soirée"
 python3 -m playlistordonner trier likes                     # titres likés
 python3 -m playlistordonner trier <url> --en-place
 python3 -m playlistordonner diagnostic                      # vérifie l'installation
+python3 -m playlistordonner tester <playlist>               # sonde appel par appel
 ```
 
 Options utiles : `--genres-precis`, `--sans-deezer`, `--sans-affinage`,
@@ -236,7 +237,7 @@ Python.
 | Beaucoup de titres sans BPM | Deezer ne connaît pas ces titres, ou l'option Deezer est décochée. Ils sont regroupés en fin de leur genre. |
 | Beaucoup de « Genre inconnu » | Les artistes concernés n'ont pas de genre chez Spotify (fréquent pour les artistes peu connus). |
 | Playlist non modifiable | Tu ne peux réécrire que tes propres playlists ou les playlists collaboratives. Pour les autres, utilise « nouvelle playlist ». |
-| `403` sur une playlist | Les playlists **créées par Spotify** (Découvertes de la semaine, Daily Mix, Radar des sorties, Top titres…) sont fermées aux applications créées après fin 2024. Elles sont signalées « — créée par Spotify » dans la liste : choisis-en une que tu as créée toi-même. |
+| `403` sur une playlist | D'abord, l'application retente d'elle-même avec une requête simplifiée. Si le refus persiste, lance `python3 -m playlistordonner tester <playlist>` : la sonde interroge Spotify appel par appel et montre exactement ce qui est refusé. Les playlists **créées par Spotify** (Découvertes de la semaine, Daily Mix…) sont fermées aux applications récentes et signalées comme telles dans la liste. |
 | `403` sur les titres likés | L'autorisation `user-library-read` n'a pas été accordée. Clique sur « Se connecter à Spotify » pour réautoriser. |
 
 Les erreurs Spotify nomment désormais l'appel fautif (`Erreur Spotify 403 sur
