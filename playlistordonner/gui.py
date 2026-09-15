@@ -194,7 +194,10 @@ class App(tk.Tk):
         self.cancel_btn = ttk.Button(actions, text="Annuler", command=self.cancel,
                                      state="disabled")
         self.cancel_btn.pack(fill="x", pady=6)
-        ttk.Button(actions, text="Se déconnecter", command=self.logout).pack(fill="x")
+        ttk.Button(actions, text="Se connecter à Spotify",
+                   command=self.start_login).pack(fill="x")
+        ttk.Button(actions, text="Se déconnecter",
+                   command=self.logout).pack(fill="x", pady=(6, 0))
 
         ttk.Label(frame, text="Journal", font=("Helvetica", 13, "bold")).pack(anchor="w", pady=(10, 2))
         log_frame = ttk.Frame(frame)

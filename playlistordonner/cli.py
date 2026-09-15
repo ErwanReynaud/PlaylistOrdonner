@@ -171,16 +171,14 @@ def _sonder(chemin):
 
 
 def _reseau(hote):
-    import urllib.error
-    import urllib.request
+    """Teste l'accès en passant par le même client que l'application."""
+    from .webclient import HttpError, request
 
     try:
-        urllib.request.urlopen("https://%s/" % hote, timeout=10).close()
-        return "joignable"
-    except urllib.error.HTTPError as exc:
-        return "joignable (code %s)" % exc.code
-    except Exception as exc:
+        resultat = request("https://%s/" % hote, timeout=15, retries=0)
+    except HttpError as exc:
         return "INJOIGNABLE (%s)" % exc
+    return "joignable (code %s)" % resultat.status
 
 
 def cmd_diagnostic(args):
@@ -213,6 +211,9 @@ def cmd_diagnostic(args):
     else:
         _log("→ Aucun Python avec Tk 8.6 : installe python.org ou « brew install python-tk ».")
     _log("")
+    from . import certificats
+
+    _log("Certificats   : %s" % certificats.description())
     _log("Configuration : %s" % config.config_dir())
     _log("Client ID     : %s" % ("renseigné" if auth.has_client_id else "absent"))
     _log("Connexion     : %s" % ("active" if auth.is_logged_in else "aucune"))

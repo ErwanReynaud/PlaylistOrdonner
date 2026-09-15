@@ -216,6 +216,18 @@ ou le paquet officiel depuis <https://www.python.org/downloads/macos/>, qui
 embarque un Tk 8.6 à jour. Puis relance l'application — rien d'autre à faire,
 elle le détectera seule.
 
+### « CERTIFICATE_VERIFY_FAILED : unable to get local issuer certificate »
+
+Les Python installés depuis python.org arrivent **sans certificats racine** :
+sans eux, aucune connexion HTTPS n'aboutit. L'application s'en sort seule en
+reconstruisant un magasin à partir du trousseau de macOS (via l'outil système
+`security`), sans jamais désactiver la vérification des certificats.
+
+Si le message revient malgré tout, applique le correctif officiel une fois pour
+toutes : ouvre le dossier **Applications → Python 3.x** et double-clique sur
+**« Install Certificates.command »**. Cela répare aussi tous tes autres scripts
+Python.
+
 | Symptôme | Cause et remède |
 |---|---|
 | L'app ne s'ouvre pas | Regarde `~/Library/Logs/PlaylistOrdonner.log` : il indique quel interpréteur a été retenu, sa version de Tk, et ceux qui ont été écartés. |
