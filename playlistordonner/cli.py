@@ -239,67 +239,106 @@ def cmd_tester(args):
 
     auth = _auth(args)
     client = SpotifyClient(auth)
-    playlist_id = _strip_uri(args.playlist)
     jeton = auth.access_token()
     champs = SpotifyClient.CHAMPS_TITRES
 
-    def essai(libelle, chemin, params=None):
+    def essai(libelle, chemin, params=None, silencieux=False):
         url = API + chemin
         if params:
             url += "?" + urllib.parse.urlencode(params)
         resultat = request(url, headers={"Authorization": "Bearer " + jeton}, retries=0)
-        etat = "OK " if resultat.ok else "NON"
-        detail = ""
-        if not resultat.ok:
-            erreur = (resultat.data or {}).get("error")
-            if isinstance(erreur, dict):
-                detail = " — %s" % (erreur.get("message") or "")
-            elif erreur:
-                detail = " — %s" % erreur
-        _log("  [%s %3d] %-42s%s" % (etat, resultat.status, libelle, detail))
+        if not silencieux:
+            etat = "OK " if resultat.ok else "NON"
+            detail = ""
+            if not resultat.ok:
+                erreur = (resultat.data or {}).get("error")
+                if isinstance(erreur, dict):
+                    detail = " — %s" % (erreur.get("message") or "")
+                elif erreur:
+                    detail = " — %s" % erreur
+            _log("  [%s %3d] %-44s%s" % (etat, resultat.status, libelle, detail))
         return resultat
 
-    _log("=== Sonde sur la playlist %s ===" % playlist_id)
+    moi = client.me()
+    _log("Compte connecté : %s (%s)" % (moi.get("display_name") or "?", moi.get("id")))
+    _log("Pays du compte  : %s" % (moi.get("country") or "inconnu"))
+    _log("Autorisations   : %s" % (", ".join(sorted(auth.granted_scopes)) or "inconnues"))
     _log("")
-    essai("compte connecté", "/me")
 
+    if not args.playlist:
+        return _balayage(client, essai, moi)
+
+    playlist_id = _strip_uri(args.playlist)
+    _log("=== Sonde détaillée sur %s ===" % playlist_id)
     fiche = essai("fiche de la playlist", "/playlists/%s" % playlist_id)
     if fiche.ok:
         proprietaire = (fiche.data.get("owner") or {}).get("id")
-        _log("      nom : %s" % fiche.data.get("name"))
-        _log("      propriétaire : %s   collaborative : %s   publique : %s"
-             % (proprietaire, fiche.data.get("collaborative"), fiche.data.get("public")))
+        _log("      nom : %s   titres : %s"
+             % (fiche.data.get("name"), (fiche.data.get("tracks") or {}).get("total")))
+        _log("      propriétaire : %s (%s)   collaborative : %s   publique : %s"
+             % (proprietaire,
+                "c'est toi" if proprietaire == moi.get("id") else "quelqu'un d'autre",
+                fiche.data.get("collaborative"), fiche.data.get("public")))
 
     chemin = "/playlists/%s/tracks" % playlist_id
+    pays = moi.get("country") or "FR"
     essai("titres, requête minimale", chemin, {"limit": 1})
-    essai("titres, limit=50", chemin, {"limit": 50})
+    essai("titres + market=%s" % pays, chemin, {"limit": 1, "market": pays})
     essai("titres + additional_types", chemin, {"limit": 1, "additional_types": "track"})
     essai("titres + fields", chemin, {"limit": 1, "fields": champs})
-    complete = essai("titres, requête complète", chemin,
-                     {"limit": 100, "fields": champs, "additional_types": "track"})
+    essai("titres, offset=1", chemin, {"limit": 1, "offset": 1})
+    fiche_titres = essai(
+        "titres via la fiche (fields=tracks)", "/playlists/%s" % playlist_id,
+        {"fields": "tracks(total,items(track(id,name)))"},
+    )
+    if fiche_titres.ok:
+        bloc = (fiche_titres.data or {}).get("tracks") or {}
+        _log("      la fiche renvoie %d titre(s) sur %s"
+             % (len(bloc.get("items") or []), bloc.get("total")))
+    _log("")
+    _log("Pour savoir si le problème touche toutes tes playlists :")
+    _log("  python3 -m playlistordonner tester")
+    return 0
+
+
+def _balayage(client, essai, moi):
+    """Teste la lecture des titres sur toutes les playlists, pour situer le refus."""
+    _log("=== Lecture des titres, playlist par playlist ===")
+    _log("")
+    playlists = client.my_playlists()
+    reussites, refus = 0, 0
+
+    likes = essai("titres likés (/me/tracks)", "/me/tracks", {"limit": 1})
+    _log("")
+    for playlist in playlists:
+        if not playlist or not playlist.get("id"):
+            continue
+        proprietaire = (playlist.get("owner") or {}).get("id")
+        marque = "moi" if proprietaire == moi.get("id") else (proprietaire or "?")[:16]
+        nom = (playlist.get("name") or "(sans nom)")[:28]
+        resultat = essai(
+            "%-28s [%s]" % (nom, marque),
+            "/playlists/%s/tracks" % playlist["id"], {"limit": 1},
+        )
+        if resultat.ok:
+            reussites += 1
+        else:
+            refus += 1
 
     _log("")
-    identifiants = []
-    for element in (complete.data or {}).get("items") or []:
-        piste = (element or {}).get("track") or {}
-        if piste.get("id"):
-            identifiants.append(piste["id"])
-        for artiste in piste.get("artists") or []:
-            if artiste.get("id"):
-                identifiants.append("artiste:" + artiste["id"])
-    artistes = [i.split(":")[1] for i in identifiants if i.startswith("artiste:")][:2]
-    pistes = [i for i in identifiants if not i.startswith("artiste:")][:2]
-
-    if artistes:
-        essai("genres des artistes", "/artists", {"ids": ",".join(artistes)})
-    if pistes:
-        essai("caractéristiques audio (BPM)", "/audio-features", {"ids": ",".join(pistes)})
-    essai("titres likés", "/me/tracks", {"limit": 1})
-    _log("")
-    _log("Autorisations du jeton : %s" % (", ".join(sorted(auth.granted_scopes)) or "inconnues"))
-    manquantes = auth.missing_scopes()
-    if manquantes:
-        _log("MANQUANTES : %s" % ", ".join(sorted(manquantes)))
+    _log("Bilan : %d playlist(s) lisible(s), %d refusée(s), titres likés : %s"
+         % (reussites, refus, "OK" if likes.ok else "refusés"))
+    if refus and not reussites:
+        _log("")
+        _log("Aucune playlist n'est lisible alors que le compte et les titres")
+        _log("likés répondent : le blocage vient de l'application Spotify")
+        _log("elle-même, pas de tes playlists. Crée une nouvelle application")
+        _log("sur https://developer.spotify.com/dashboard et colle son nouveau")
+        _log("Client ID dans PlaylistOrdonner.")
+    elif refus:
+        _log("")
+        _log("Certaines playlists passent : le refus est propre à celles qui")
+        _log("échouent, pas à ton application.")
     return 0
 
 
@@ -341,8 +380,9 @@ def build_parser():
     trier.set_defaults(func=cmd_trier)
 
     test = sub.add_parser("tester",
-                          help="interroge Spotify appel par appel sur une playlist")
-    test.add_argument("playlist", help="identifiant ou URL de la playlist")
+                          help="sonde Spotify : sans argument, balaie toutes tes playlists")
+    test.add_argument("playlist", nargs="?",
+                      help="identifiant ou URL ; sans argument, balaie toutes tes playlists")
     test.add_argument("--client-id")
     test.set_defaults(func=cmd_tester)
 
