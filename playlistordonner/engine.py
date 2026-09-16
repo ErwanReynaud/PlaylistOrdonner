@@ -137,6 +137,22 @@ class Engine:
             )
         return out
 
+    def _verifier_autorisations(self):
+        """Arrête avant de travailler si le jeton n'a pas toutes les permissions.
+
+        Mieux vaut un message clair qu'un 403 obscur au milieu du traitement.
+        """
+        authentification = getattr(self.client, "auth", None)
+        manquantes = getattr(authentification, "missing_scopes", lambda: set())()
+        if manquantes:
+            raise SpotifyError(
+                "Ton autorisation Spotify ne couvre pas %s.\n\nClique sur "
+                "« Se connecter à Spotify » pour la renouveler : ces "
+                "permissions ont été ajoutées après ta dernière connexion."
+                % ", ".join(sorted(manquantes)),
+                403,
+            )
+
     def _load_items(self, playlist_id):
         def on_page(done, total):
             self._progress(done, total or done, "Lecture des titres")
@@ -150,7 +166,8 @@ class Engine:
         self.log("Lecture de « %s » (propriétaire : %s)…" % (name, proprietaire))
         try:
             items = self.client.playlist_tracks(
-                playlist_id, progress=on_page, note=self.log
+                playlist_id, progress=on_page, note=self.log,
+                market=self.user().get("country"),
             )
         except SpotifyError as exc:
             if exc.status == 403:
@@ -175,6 +192,7 @@ class Engine:
     def analyse(self, playlist_id, group_mode=sorter.GROUP_BY_FAMILY,
                 use_deezer=True, refine_with_audio=True):
         """Lit la playlist et calcule le nouvel ordre, sans rien écrire."""
+        self._verifier_autorisations()
         report = Report()
         report.playlist_name, items = self._load_items(playlist_id)
         self.check()

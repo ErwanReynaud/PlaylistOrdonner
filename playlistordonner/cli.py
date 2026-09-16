@@ -261,8 +261,15 @@ def cmd_tester(args):
 
     moi = client.me()
     _log("Compte connecté : %s (%s)" % (moi.get("display_name") or "?", moi.get("id")))
-    _log("Pays du compte  : %s" % (moi.get("country") or "inconnu"))
+    pays_connu = moi.get("country")
+    _log("Pays du compte  : %s" % (pays_connu or
+         "INCONNU — l'autorisation user-read-private manque, or Spotify a "
+         "besoin du pays pour lister les titres d'une playlist"))
     _log("Autorisations   : %s" % (", ".join(sorted(auth.granted_scopes)) or "inconnues"))
+    manquantes = auth.missing_scopes()
+    if manquantes:
+        _log("MANQUANTES      : %s" % ", ".join(sorted(manquantes)))
+        _log("                  Reconnecte-toi pour les accorder.")
     _log("")
 
     if not args.playlist:
@@ -281,7 +288,7 @@ def cmd_tester(args):
                 fiche.data.get("collaborative"), fiche.data.get("public")))
 
     chemin = "/playlists/%s/tracks" % playlist_id
-    pays = moi.get("country") or "FR"
+    pays = pays_connu or "FR"
     essai("titres, requête minimale", chemin, {"limit": 1})
     essai("titres + market=%s" % pays, chemin, {"limit": 1, "market": pays})
     essai("titres + additional_types", chemin, {"limit": 1, "additional_types": "track"})

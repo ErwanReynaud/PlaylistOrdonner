@@ -27,6 +27,10 @@ REDIRECT_PATH = "/callback"
 REDIRECT_URI = "http://%s:%d%s" % (REDIRECT_HOST, REDIRECT_PORT, REDIRECT_PATH)
 
 SCOPES = [
+    # user-read-private donne le pays du compte. Sans lui, Spotify ne peut pas
+    # déterminer le marché de l'utilisateur et refuse (403) de lister les
+    # titres des playlists.
+    "user-read-private",
     "playlist-read-private",
     "playlist-read-collaborative",
     "playlist-modify-private",

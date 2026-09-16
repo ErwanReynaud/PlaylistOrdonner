@@ -89,15 +89,15 @@ class SpotifyClient:
         "is_playable,external_ids(isrc),type,artists(id,name),album(name,release_date)))"
     )
 
-    def variantes_titres(self):
+    def variantes_titres(self, market=None):
         """Jeux de paramètres, du plus précis au plus dépouillé.
 
-        Certains comptes ou certaines playlists refusent la requête complète.
-        Plutôt que d'abandonner, on retente en retirant les raffinements : le
-        strict minimum (`limit`) suffit à faire le travail, au prix de réponses
-        plus volumineuses.
+        Certains comptes refusent la requête complète. Plutôt que d'abandonner,
+        on retente en retirant les raffinements, et en précisant le marché :
+        Spotify doit savoir dans quel pays juger la disponibilité des titres,
+        et refuse la requête quand il ne peut pas le déterminer.
         """
-        return [
+        bases = [
             ("complète", {"limit": 100, "fields": self.CHAMPS_TITRES,
                           "additional_types": "track"}),
             ("sans filtrage des champs", {"limit": 100, "additional_types": "track"}),
@@ -105,10 +105,18 @@ class SpotifyClient:
             ("minimale", {"limit": 100}),
             ("minimale, par pages de 50", {"limit": 50}),
         ]
+        variantes = []
+        for etiquette, params in bases:
+            variantes.append((etiquette, params))
+            if market:
+                avec_marche = dict(params)
+                avec_marche["market"] = market
+                variantes.append(("%s + market=%s" % (etiquette, market), avec_marche))
+        return variantes
 
-    def playlist_tracks(self, playlist_id, progress=None, note=None):
+    def playlist_tracks(self, playlist_id, progress=None, note=None, market=None):
         chemin = "/playlists/%s/tracks" % playlist_id
-        variantes = self.variantes_titres()
+        variantes = self.variantes_titres(market)
         dernier_refus = None
         for etiquette, params in variantes:
             try:

@@ -252,3 +252,51 @@ class TestRepliParametres(unittest.TestCase):
         with self.assertRaises(SpotifyError) as piege:
             client.playlist_tracks("p1")
         self.assertIn("1 sur 250", str(piege.exception))
+
+
+class TestAutorisationsManquantes(unittest.TestCase):
+    """Un jeton incomplet doit être signalé avant tout travail, pas via un 403."""
+
+    def test_analyse_refusee_si_une_autorisation_manque(self):
+        from playlistordonner import engine as engine_mod
+        from playlistordonner.auth import SCOPES
+        from playlistordonner.spotify import SpotifyError
+
+        class FauxAuth:
+            def missing_scopes(self):
+                return {"user-read-private"}
+
+        class ClientIncomplet:
+            auth = FauxAuth()
+
+        original = engine_mod.SpotifyClient
+        engine_mod.SpotifyClient = lambda auth: ClientIncomplet()
+        try:
+            moteur = engine_mod.Engine(authenticator=None)
+            with self.assertRaises(SpotifyError) as piege:
+                moteur.analyse("p1")
+        finally:
+            engine_mod.SpotifyClient = original
+        self.assertIn("user-read-private", str(piege.exception))
+        self.assertIn("Se connecter à Spotify", str(piege.exception))
+        self.assertIn("user-read-private", SCOPES)
+
+
+class TestVariantesMarche(unittest.TestCase):
+    def test_chaque_variante_est_doublee_avec_le_marche(self):
+        from playlistordonner.spotify import SpotifyClient
+
+        client = SpotifyClient.__new__(SpotifyClient)
+        sans = client.variantes_titres()
+        avec = client.variantes_titres("FR")
+        self.assertEqual(len(avec), 2 * len(sans))
+        self.assertTrue(all("market" not in p for _, p in sans))
+        self.assertEqual(
+            sum(1 for _, p in avec if p.get("market") == "FR"), len(sans))
+
+    def test_la_variante_sans_marche_reste_essayee_en_premier(self):
+        from playlistordonner.spotify import SpotifyClient
+
+        client = SpotifyClient.__new__(SpotifyClient)
+        premiere = client.variantes_titres("FR")[0]
+        self.assertNotIn("market", premiere[1])

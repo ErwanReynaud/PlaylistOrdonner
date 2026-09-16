@@ -152,7 +152,7 @@ class FauxClient:
         self.replaced = None
 
     def me(self):
-        return {"id": "chef", "display_name": "Chef"}
+        return {"id": "chef", "display_name": "Chef", "country": "FR"}
 
     def my_playlists(self, progress=None):
         return [{"id": "p1", "name": "Ma playlist", "owner": {"id": "chef"},
@@ -162,7 +162,8 @@ class FauxClient:
         return {"id": playlist_id, "name": "Ma playlist", "owner": {"id": "chef"},
                 "tracks": {"total": len(self.items)}}
 
-    def playlist_tracks(self, playlist_id, progress=None, note=None):
+    def playlist_tracks(self, playlist_id, progress=None, note=None, market=None):
+        self.market = market
         return self.items
 
     def artists(self, artist_ids):
@@ -228,6 +229,11 @@ class TestMoteur(unittest.TestCase):
         self.engine.write(report, "p1", destination=engine_mod.DEST_IN_PLACE)
         self.assertEqual(self.faux.replaced,
                          ["spotify:track:t2", "spotify:track:t3", "spotify:track:t1"])
+
+    def test_le_pays_du_compte_est_transmis(self):
+        """Spotify a besoin du marché pour lister les titres d'une playlist."""
+        self.engine.analyse("p1", use_deezer=False)
+        self.assertEqual(self.faux.market, "FR")
 
     def test_playlists_de_spotify_signalees(self):
         self.faux.my_playlists = lambda progress=None: [
