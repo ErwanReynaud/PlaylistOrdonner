@@ -242,21 +242,30 @@ def cmd_tester(args):
     jeton = auth.access_token()
     champs = SpotifyClient.CHAMPS_TITRES
 
-    def essai(libelle, chemin, params=None, silencieux=False):
+    def essai(libelle, chemin, params=None, entetes=None, brut=False):
         url = API + chemin
         if params:
             url += "?" + urllib.parse.urlencode(params)
-        resultat = request(url, headers={"Authorization": "Bearer " + jeton}, retries=0)
-        if not silencieux:
-            etat = "OK " if resultat.ok else "NON"
-            detail = ""
-            if not resultat.ok:
-                erreur = (resultat.data or {}).get("error")
-                if isinstance(erreur, dict):
-                    detail = " — %s" % (erreur.get("message") or "")
-                elif erreur:
-                    detail = " — %s" % erreur
-            _log("  [%s %3d] %-44s%s" % (etat, resultat.status, libelle, detail))
+        tous = {"Authorization": "Bearer " + jeton}
+        tous.update(entetes or {})
+        resultat = request(url, headers=tous, retries=0)
+        etat = "OK " if resultat.ok else "NON"
+        detail = ""
+        if not resultat.ok:
+            erreur = (resultat.data or {}).get("error")
+            if isinstance(erreur, dict):
+                detail = " — %s" % (erreur.get("message") or "")
+            elif erreur:
+                detail = " — %s" % erreur
+        _log("  [%s %3d] %-44s%s" % (etat, resultat.status, libelle, detail))
+        if brut and not resultat.ok:
+            corps = (resultat.raw or b"").decode("utf-8", "replace").strip()
+            _log("      corps : %s" % (corps[:400] or "(vide)"))
+            interessants = ("x-robots-tag", "server", "www-authenticate", "retry-after",
+                            "content-type", "cf-ray", "x-content-type-options")
+            for cle, valeur in sorted((resultat.headers or {}).items()):
+                if cle.lower() in interessants:
+                    _log("      %s: %s" % (cle, valeur))
         return resultat
 
     moi = client.me()
@@ -303,6 +312,22 @@ def cmd_tester(args):
         _log("      la fiche renvoie %d titre(s) sur %s"
              % (len(bloc.get("items") or []), bloc.get("total")))
     _log("")
+    _log("--- variantes d'en-têtes HTTP ---")
+    navigateur = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+    essai("User-Agent de navigateur", chemin, {"limit": 1},
+          {"User-Agent": navigateur})
+    essai("User-Agent urllib nu", chemin, {"limit": 1},
+          {"User-Agent": "Python-urllib/3"})
+    essai("sans en-tête Accept", chemin, {"limit": 1}, {"Accept": "*/*"})
+
+    _log("")
+    _log("--- pour comparaison, appels qui fonctionnent ---")
+    essai("titres likés", "/me/tracks", {"limit": 1})
+    essai("recherche", "/search", {"q": "daft punk", "type": "track", "limit": 1})
+    essai("album", "/albums/4m2880jivSbbyEGAKfITCa", {"market": pays})
+
+    _log("")
     _log("Pour savoir si le problème touche toutes tes playlists :")
     _log("  python3 -m playlistordonner tester")
     return 0
@@ -338,10 +363,12 @@ def _balayage(client, essai, moi):
     if refus and not reussites:
         _log("")
         _log("Aucune playlist n'est lisible alors que le compte et les titres")
-        _log("likés répondent : le blocage vient de l'application Spotify")
-        _log("elle-même, pas de tes playlists. Crée une nouvelle application")
-        _log("sur https://developer.spotify.com/dashboard et colle son nouveau")
-        _log("Client ID dans PlaylistOrdonner.")
+        _log("likés répondent : le refus vise l'accès aux titres des playlists,")
+        _log("quelles qu'elles soient. Pour en connaître le motif exact, lance")
+        _log("la sonde détaillée sur l'une d'elles, qui affiche la réponse")
+        _log("brute de Spotify :")
+        _log("  python3 -m playlistordonner tester %s"
+             % (playlists[0].get("id") if playlists else "<identifiant>"))
     elif refus:
         _log("")
         _log("Certaines playlists passent : le refus est propre à celles qui")
