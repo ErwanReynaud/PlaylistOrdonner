@@ -320,3 +320,72 @@ class _CacheMemoire:
 
     def save(self):
         pass
+
+
+class TestListeCollee(unittest.TestCase):
+    """Voie de secours : classer des titres lus un par un par identifiant."""
+
+    def test_extraction_des_identifiants(self):
+        from playlistordonner.liens import identifiants_de_titres
+
+        texte = (
+            "https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp?si=x\n"
+            "https://open.spotify.com/intl-fr/track/7ouMYWpwJ422jRcDASZB7P\n"
+            "spotify:track:0eGsygTp906u18L0Oimnem\n"
+            "1301WleyT98MSxVHPZCA6M\n"
+            "du texte sans lien\n"
+            "https://open.spotify.com/album/4m2880jivSbbyEGAKfITCa\n"
+            "https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp\n"
+        )
+        trouves = identifiants_de_titres(texte)
+        self.assertEqual(trouves, [
+            "3n3Ppam7vgaVa1iaRUc9Lp", "7ouMYWpwJ422jRcDASZB7P",
+            "0eGsygTp906u18L0Oimnem", "1301WleyT98MSxVHPZCA6M",
+        ])
+
+    def test_texte_vide(self):
+        from playlistordonner.liens import identifiants_de_titres
+
+        self.assertEqual(identifiants_de_titres(""), [])
+        self.assertEqual(identifiants_de_titres(None), [])
+
+    def test_classement_depuis_identifiants(self):
+        items = [
+            make_item("t1", "Metal rapide", "a_metal", "Metal Band"),
+            make_item("t2", "Ambient lent", "a_amb", "Ambient Artist"),
+        ]
+        artists = {
+            "a_metal": {"id": "a_metal", "genres": ["death metal"]},
+            "a_amb": {"id": "a_amb", "genres": ["ambient"]},
+        }
+        features = {
+            "t1": {"id": "t1", "tempo": 190.0, "energy": 0.98},
+            "t2": {"id": "t2", "tempo": 60.0, "energy": 0.05},
+        }
+        faux = FauxClient(items, artists, features)
+        faux.tracks = lambda ids, market=None: [
+            i["track"] for i in items if i["track"]["id"] in ids
+        ]
+        original = engine_mod.SpotifyClient
+        engine_mod.SpotifyClient = lambda auth: faux
+        try:
+            moteur = Engine(authenticator=None)
+            report = moteur.analyse_identifiants(["t1", "t2"], use_deezer=False)
+        finally:
+            engine_mod.SpotifyClient = original
+        self.assertEqual([t.title for t in report.tracks],
+                         ["Ambient lent", "Metal rapide"])
+        self.assertEqual(report.playlist_name, "Sélection")
+
+    def test_liste_vide_refusee(self):
+        from playlistordonner.spotify import SpotifyError
+
+        faux = FauxClient([], {}, {})
+        original = engine_mod.SpotifyClient
+        engine_mod.SpotifyClient = lambda auth: faux
+        try:
+            moteur = Engine(authenticator=None)
+            with self.assertRaises(SpotifyError):
+                moteur.analyse_identifiants([])
+        finally:
+            engine_mod.SpotifyClient = original

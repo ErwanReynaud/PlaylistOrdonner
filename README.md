@@ -165,6 +165,29 @@ Les clés sont des genres Spotify en minuscules, les valeurs des scores de 0 à
 
 ---
 
+## Si Spotify refuse de lister tes playlists
+
+Certains comptes reçoivent un `403 Forbidden` sur **toutes** leurs playlists,
+alors que le compte, la recherche et les titres likés répondent normalement.
+Spotify va jusqu'à retirer le bloc `tracks` de la fiche de la playlist. Ce
+refus ne vient ni des autorisations, ni des paramètres de la requête, ni des
+en-têtes : il vise l'accès au contenu des playlists.
+
+Le bouton **« Classer des titres collés… »** contourne ce blocage. Les titres
+sont lus un par un par leur identifiant, ce qui reste autorisé :
+
+1. Dans Spotify, ouvre la playlist et sélectionne les titres (Cmd+A).
+2. Clic droit → **Partager** → **Copier le lien**.
+3. Dans PlaylistOrdonner, clique sur « Classer des titres collés… », colle
+   avec Cmd+V, puis « Classer ces titres ».
+
+Le classement est identique, et le résultat part dans une nouvelle playlist.
+En ligne de commande, colle les liens dans un fichier puis :
+
+```bash
+python3 -m playlistordonner trier-liste mes-liens.txt --nom "UEC ordonnée"
+```
+
 ## En ligne de commande
 
 Le même moteur est utilisable sans interface :
@@ -178,6 +201,7 @@ python3 -m playlistordonner trier likes                     # titres likés
 python3 -m playlistordonner trier <url> --en-place
 python3 -m playlistordonner diagnostic                      # vérifie l'installation
 python3 -m playlistordonner tester <playlist>               # sonde appel par appel
+python3 -m playlistordonner trier-liste liens.txt           # depuis des liens collés
 ```
 
 Options utiles : `--genres-precis`, `--sans-deezer`, `--sans-affinage`,

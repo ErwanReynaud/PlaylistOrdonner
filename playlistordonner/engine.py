@@ -193,14 +193,40 @@ class Engine:
                 use_deezer=True, refine_with_audio=True):
         """Lit la playlist et calcule le nouvel ordre, sans rien écrire."""
         self._verifier_autorisations()
+        nom, items = self._load_items(playlist_id)
+        return self._classer(nom, items, group_mode, use_deezer, refine_with_audio)
+
+    def analyse_identifiants(self, identifiants, nom="Sélection",
+                             group_mode=sorter.GROUP_BY_FAMILY,
+                             use_deezer=True, refine_with_audio=True):
+        """Classe une liste de titres désignés par leurs identifiants Spotify.
+
+        Voie de secours quand Spotify refuse de lister le contenu des
+        playlists : les titres sont lus un par un, ce qui reste autorisé.
+        """
+        self._verifier_autorisations()
+        identifiants = list(dict.fromkeys(identifiants))
+        if not identifiants:
+            raise SpotifyError("Aucun identifiant de titre reconnu dans la liste.")
+        self.log("Lecture de %d titre(s) par identifiant…" % len(identifiants))
+        self._progress(0, len(identifiants), "Lecture des titres")
+        pistes = self.client.tracks(identifiants, market=self.user().get("country"))
+        self._progress(len(pistes), len(identifiants), "Lecture des titres")
+        introuvables = len(identifiants) - len(pistes)
+        if introuvables > 0:
+            self.log("%d identifiant(s) sans correspondance chez Spotify." % introuvables)
+        items = [{"is_local": False, "track": piste} for piste in pistes]
+        return self._classer(nom, items, group_mode, use_deezer, refine_with_audio)
+
+    def _classer(self, nom, items, group_mode, use_deezer, refine_with_audio):
         report = Report()
-        report.playlist_name, items = self._load_items(playlist_id)
+        report.playlist_name = nom
         self.check()
 
         tracks, skipped = sorter.build_tracks(items)
         report.skipped = skipped
         if not tracks:
-            raise SpotifyError("Aucun titre exploitable dans cette playlist.")
+            raise SpotifyError("Aucun titre exploitable dans cette sélection.")
         self.log("%d titre(s) à classer." % len(tracks))
 
         # 1. Genres : ils viennent des artistes, pas des titres.

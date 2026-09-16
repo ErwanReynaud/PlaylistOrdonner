@@ -8,7 +8,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, sorter
+from . import APP_NAME, __version__, liens, sorter
 from .auth import REDIRECT_URI, AuthError, Authenticator
 from .engine import DEST_IN_PLACE, DEST_NEW, Cancelled, Engine
 
@@ -44,6 +44,7 @@ class App(tk.Tk):
         self.report = None
         self.playlists = []
         self.selected_id = None
+        self.mode_liste = False
 
         self._build()
         self._refresh_auth_state()
@@ -201,6 +202,10 @@ class App(tk.Tk):
         ttk.Button(actions, text="Changer d'application Spotify",
                    command=self.change_client_id).pack(fill="x", pady=(6, 0))
 
+        ttk.Separator(actions, orient="horizontal").pack(fill="x", pady=10)
+        ttk.Button(actions, text="Classer des titres collés…",
+                   command=self.ouvrir_collage).pack(fill="x")
+
         ttk.Label(frame, text="Journal", font=("Helvetica", 13, "bold")).pack(anchor="w", pady=(10, 2))
         log_frame = ttk.Frame(frame)
         log_frame.pack(fill="both", expand=True)
@@ -254,6 +259,106 @@ class App(tk.Tk):
         self.account_label.config(text="déconnecté")
         self.log("Déconnecté. Relance la connexion quand tu veux.")
         self.start_login()
+
+    def ouvrir_collage(self):
+        """Fenêtre où coller des liens Spotify, quand la playlist est illisible.
+
+        Dans Spotify : sélectionne les titres, clic droit, « Partager », puis
+        « Copier le lien ». Cette voie lit les titres un par un et ne dépend
+        donc pas de la lecture des playlists.
+        """
+        fenetre = tk.Toplevel(self)
+        fenetre.title("Classer des titres collés")
+        fenetre.geometry("620x460")
+        fenetre.transient(self)
+
+        ttk.Label(
+            fenetre, justify="left", wraplength=580,
+            text="Dans Spotify : sélectionne les titres (Cmd+A pour tous), "
+                 "clic droit, « Partager », « Copier le lien ». Colle-les "
+                 "ici avec Cmd+V, puis classe-les.",
+        ).pack(anchor="w", padx=14, pady=(14, 8))
+
+        cadre = ttk.Frame(fenetre)
+        cadre.pack(fill="both", expand=True, padx=14)
+        zone = tk.Text(cadre, wrap="none", font=("Menlo", 11), height=16)
+        barre = ttk.Scrollbar(cadre, orient="vertical", command=zone.yview)
+        zone.configure(yscrollcommand=barre.set)
+        zone.pack(side="left", fill="both", expand=True)
+        barre.pack(side="left", fill="y")
+        zone.focus_set()
+
+        compteur = ttk.Label(fenetre, text="0 titre reconnu")
+        compteur.pack(anchor="w", padx=14, pady=(6, 0))
+
+        def recompter(_event=None):
+            trouves = liens.identifiants_de_titres(zone.get("1.0", "end"))
+            compteur.config(text="%d titre%s reconnu%s"
+                            % (len(trouves), "s" if len(trouves) > 1 else "",
+                               "s" if len(trouves) > 1 else ""))
+
+        zone.bind("<KeyRelease>", recompter)
+        zone.bind("<<Paste>>", lambda e: zone.after(50, recompter))
+
+        barre_boutons = ttk.Frame(fenetre)
+        barre_boutons.pack(fill="x", padx=14, pady=12)
+
+        def depuis_fichier():
+            chemin = filedialog.askopenfilename(
+                title="Fichier contenant les liens Spotify",
+                filetypes=[("Fichier texte", "*.txt"), ("Tous les fichiers", "*.*")],
+            )
+            if not chemin:
+                return
+            try:
+                with open(chemin, "r", encoding="utf-8", errors="replace") as fh:
+                    contenu = fh.read()
+            except OSError as exc:
+                messagebox.showerror(APP_NAME, "Lecture impossible : %s" % exc)
+                return
+            zone.delete("1.0", "end")
+            zone.insert("1.0", contenu)
+            recompter()
+
+        def lancer():
+            identifiants = liens.identifiants_de_titres(zone.get("1.0", "end"))
+            if not identifiants:
+                messagebox.showwarning(
+                    APP_NAME,
+                    "Aucun lien Spotify reconnu. Attendu : des adresses "
+                    "open.spotify.com/track/… ou des liens spotify:track:…",
+                )
+                return
+            fenetre.destroy()
+            self.lancer_collage(identifiants)
+
+        ttk.Button(barre_boutons, text="Ouvrir un fichier…",
+                   command=depuis_fichier).pack(side="left")
+        ttk.Button(barre_boutons, text="Classer ces titres",
+                   command=lancer).pack(side="right")
+
+    def lancer_collage(self, identifiants):
+        self.mode_liste = True
+        self.report = None
+        self.write_btn.config(state="disabled")
+        self.export_btn.config(state="disabled")
+        self.log_text.config(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.config(state="disabled")
+        self.dest_var.set(DEST_NEW)
+        self._sync_dest()
+        self.name_var.set(_suffixed("Sélection"))
+        self.log("%d titre(s) à lire par identifiant." % len(identifiants))
+
+        group_mode = self.group_var.get()
+        use_deezer = self.deezer_var.get()
+        refine = self.refine_var.get()
+        self.run_async(
+            lambda: self._engine().analyse_identifiants(
+                identifiants, nom="Sélection", group_mode=group_mode,
+                use_deezer=use_deezer, refine_with_audio=refine,
+            )
+        )
 
     def change_client_id(self):
         """Revient à l'écran de configuration pour saisir un autre Client ID.
@@ -496,6 +601,7 @@ class App(tk.Tk):
         use_deezer = self.deezer_var.get()
         refine = self.refine_var.get()
         self.report = None
+        self.mode_liste = False
         self.log_text.config(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.config(state="disabled")
@@ -512,7 +618,7 @@ class App(tk.Tk):
             return
         report = self.report
         playlist_id = self.selected_id
-        destination = self.dest_var.get()
+        destination = DEST_NEW if self.mode_liste else self.dest_var.get()
         name = self.name_var.get()
         public = self.public_var.get()
         if destination == DEST_IN_PLACE and not messagebox.askyesno(

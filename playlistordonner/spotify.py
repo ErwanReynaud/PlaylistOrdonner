@@ -177,6 +177,24 @@ class SpotifyClient:
     def saved_tracks(self, progress=None):
         return self._paginate("/me/tracks", {"limit": 50}, progress=progress)
 
+    def tracks(self, track_ids, market=None):
+        """Titres lus un par un par leur identifiant, par paquets de 50.
+
+        Ce chemin ne passe pas par les playlists : il reste ouvert même quand
+        Spotify refuse d'en lister le contenu.
+        """
+        sortie = []
+        ids = [t for t in dict.fromkeys(track_ids) if t]
+        for chunk in _chunks(ids, 50):
+            params = {"ids": ",".join(chunk)}
+            if market:
+                params["market"] = market
+            data = self.get("/tracks", params)
+            for piste in data.get("tracks") or []:
+                if piste and piste.get("id"):
+                    sortie.append(piste)
+        return sortie
+
     def artists(self, artist_ids):
         """Genres des artistes, par paquets de 50."""
         out = {}

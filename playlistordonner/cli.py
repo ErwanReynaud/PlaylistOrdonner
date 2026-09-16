@@ -7,7 +7,7 @@ import platform
 import subprocess
 import sys
 
-from . import APP_NAME, __version__, config, sorter
+from . import APP_NAME, __version__, config, liens, sorter
 from .auth import REDIRECT_URI, AuthError, Authenticator
 from .engine import DEST_IN_PLACE, DEST_NEW, LIKED, Cancelled, Engine
 from .spotify import SpotifyError
@@ -103,6 +103,40 @@ def cmd_trier(args):
         new_name=args.nom,
         public=args.publique,
     )
+    _log("\nTerminé : %s" % (report.target_url or report.target_name))
+    return 0
+
+
+def cmd_trier_liste(args):
+    """Classe des titres désignés par leurs liens, sans passer par la playlist."""
+    try:
+        identifiants = liens.lire_fichier(args.fichier)
+    except OSError as exc:
+        _log("Lecture impossible : %s" % exc)
+        return 1
+    if not identifiants:
+        _log("Aucun lien Spotify reconnu dans %s." % args.fichier)
+        _log("Attendu : des adresses open.spotify.com/track/… ou spotify:track:…")
+        return 1
+    _log("%d titre(s) reconnu(s)." % len(identifiants))
+
+    engine = Engine(_auth(args), log=_log, progress=_progress)
+    nom = args.nom or "Sélection"
+    report = engine.analyse_identifiants(
+        identifiants, nom=nom,
+        group_mode=sorter.GROUP_BY_GENRE if args.genres_precis else sorter.GROUP_BY_FAMILY,
+        use_deezer=not args.sans_deezer,
+        refine_with_audio=not args.sans_affinage,
+    )
+    _log("")
+    _log(report.text())
+    _log("")
+    _log(report.tracklist())
+    if args.apercu:
+        _log("\nAperçu seulement : rien n'a été créé sur Spotify.")
+        return 0
+    engine.write(report, None, destination=DEST_NEW, new_name=args.nom,
+                 public=args.publique)
     _log("\nTerminé : %s" % (report.target_url or report.target_name))
     return 0
 
@@ -298,7 +332,20 @@ def cmd_tester(args):
 
     chemin = "/playlists/%s/tracks" % playlist_id
     pays = pays_connu or "FR"
-    essai("titres, requête minimale", chemin, {"limit": 1})
+    _log("")
+    _log("--- fiche complète, sans filtrage de champs ---")
+    complete = essai("fiche sans fields", "/playlists/%s" % playlist_id)
+    if complete.ok:
+        cles = sorted((complete.data or {}).keys())
+        _log("      champs renvoyés : %s" % ", ".join(cles))
+        bloc = (complete.data or {}).get("tracks")
+        _log("      bloc « tracks » : %s" % (
+            "absent" if bloc is None else repr(bloc)[:200]))
+    _log("")
+    _log("--- réponse brute du refus ---")
+    essai("titres, requête minimale", chemin, {"limit": 1}, brut=True)
+    _log("")
+    _log("--- variantes de paramètres ---")
     essai("titres + market=%s" % pays, chemin, {"limit": 1, "market": pays})
     essai("titres + additional_types", chemin, {"limit": 1, "additional_types": "track"})
     essai("titres + fields", chemin, {"limit": 1, "fields": champs})
@@ -320,6 +367,13 @@ def cmd_tester(args):
     essai("User-Agent urllib nu", chemin, {"limit": 1},
           {"User-Agent": "Python-urllib/3"})
     essai("sans en-tête Accept", chemin, {"limit": 1}, {"Accept": "*/*"})
+
+    _log("")
+    _log("--- lecture directe de titres et d'artistes ---")
+    essai("un titre par son identifiant", "/tracks/3n3Ppam7vgaVa1iaRUc9Lp")
+    essai("plusieurs titres", "/tracks",
+          {"ids": "3n3Ppam7vgaVa1iaRUc9Lp,7ouMYWpwJ422jRcDASZB7P"})
+    essai("genres d'un artiste", "/artists", {"ids": "0OdUWJ0sBjDrqHygGUXeCF"})
 
     _log("")
     _log("--- pour comparaison, appels qui fonctionnent ---")
@@ -412,6 +466,20 @@ def build_parser():
     trier.add_argument("--sans-affinage", action="store_true",
                        help="garde le score d'énergie théorique de chaque genre")
     trier.set_defaults(func=cmd_trier)
+
+    liste = sub.add_parser(
+        "trier-liste",
+        help="classe des titres collés depuis Spotify (contourne la lecture "
+             "des playlists)")
+    liste.add_argument("fichier", help="fichier texte contenant les liens Spotify")
+    liste.add_argument("--client-id")
+    liste.add_argument("--nom", help="nom de la playlist à créer")
+    liste.add_argument("--apercu", action="store_true")
+    liste.add_argument("--publique", action="store_true")
+    liste.add_argument("--genres-precis", action="store_true")
+    liste.add_argument("--sans-deezer", action="store_true")
+    liste.add_argument("--sans-affinage", action="store_true")
+    liste.set_defaults(func=cmd_trier_liste)
 
     test = sub.add_parser("tester",
                           help="sonde Spotify : sans argument, balaie toutes tes playlists")
