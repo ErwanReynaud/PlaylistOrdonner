@@ -239,6 +239,7 @@ Python.
 | Playlist non modifiable | Tu ne peux réécrire que tes propres playlists ou les playlists collaboratives. Pour les autres, utilise « nouvelle playlist ». |
 | `403` sur une playlist | D'abord, l'application retente d'elle-même avec une requête simplifiée. Si le refus persiste, lance `python3 -m playlistordonner tester <playlist>` : la sonde interroge Spotify appel par appel et montre exactement ce qui est refusé. Les playlists **créées par Spotify** (Découvertes de la semaine, Daily Mix…) sont fermées aux applications récentes et signalées comme telles dans la liste. |
 | `403` sur les titres likés | L'autorisation `user-library-read` n'a pas été accordée. Clique sur « Se connecter à Spotify » pour réautoriser. |
+| `403` sur **toutes** tes playlists | Vérifie-le avec `python3 -m playlistordonner tester` (sans argument) : si le compte et les titres likés répondent alors qu'aucune playlist n'est lisible, c'est ton application Spotify qui est restreinte. Crée-en une nouvelle sur le dashboard, puis clique sur « Changer d'application Spotify » pour saisir son Client ID. |
 
 Les erreurs Spotify nomment désormais l'appel fautif (`Erreur Spotify 403 sur
 /me/tracks : …`), ce qui permet d'identifier la cause d'un coup d'œil.

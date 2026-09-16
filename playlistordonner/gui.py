@@ -198,6 +198,8 @@ class App(tk.Tk):
                    command=self.start_login).pack(fill="x")
         ttk.Button(actions, text="Se déconnecter",
                    command=self.logout).pack(fill="x", pady=(6, 0))
+        ttk.Button(actions, text="Changer d'application Spotify",
+                   command=self.change_client_id).pack(fill="x", pady=(6, 0))
 
         ttk.Label(frame, text="Journal", font=("Helvetica", 13, "bold")).pack(anchor="w", pady=(10, 2))
         log_frame = ttk.Frame(frame)
@@ -252,6 +254,27 @@ class App(tk.Tk):
         self.account_label.config(text="déconnecté")
         self.log("Déconnecté. Relance la connexion quand tu veux.")
         self.start_login()
+
+    def change_client_id(self):
+        """Revient à l'écran de configuration pour saisir un autre Client ID.
+
+        Nécessaire quand l'application Spotify déclarée est bloquée côté
+        Spotify : il faut alors en créer une autre et repartir de son
+        identifiant.
+        """
+        self.stop_flag.set()
+        self.auth.logout()
+        self.report = None
+        self.playlists = []
+        self.tree.delete(*self.tree.get_children())
+        self.client_id_var.set(self.auth.client_id)
+        self.main_frame.pack_forget()
+        self.setup_frame.pack(fill="both", expand=True)
+        self.account_label.config(text="non configuré")
+        self.set_status(
+            "Colle le Client ID de ta nouvelle application Spotify, puis "
+            "enregistre."
+        )
 
     def _sync_dest(self):
         state = "normal" if self.dest_var.get() == DEST_NEW else "disabled"
